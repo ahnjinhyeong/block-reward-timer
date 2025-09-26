@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>30분 블럭 보상 선택기 (라이트) — FIX v3 + BlockTower + Quotes</title>
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f14">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f9fc">
+  <link rel="manifest" id="__manifest" href="#">
+  <style>
+    :root{ --bg:#0b0f14; --panel:#121821; --muted:#8aa0b2; --text:#e6edf3; --acc:#6ea8fe; --ok:#36d399; --warn:#fbbc04; --danger:#ef4444; }
+    [data-theme="light"]{ --bg:#f7f9fc; --panel:#ffffff; --muted:#4b5563; --text:#0b0f14; --acc:#2f6aea; --ok:#16a34a; --warn:#c08a00; --danger:#b91c1c; }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--text);}
+    .wrap{max-width:880px; margin:20px auto; padding:16px}
+    .card{background:var(--panel); border:1px solid #1f2937; border-radius:16px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,.25)}
+    h1{font-size:22px; margin:0 0 6px}
+    h2{font-size:16px; margin:18px 0 8px; color:#cbd5e1}
+    [data-theme="light"] h2{ color:#0f172a }
+    .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+    .timer{font-variant-numeric:tabular-nums; font-size:56px; font-weight:700; letter-spacing:1px}
+    .pill{border:1px solid #223042; padding:8px 10px; border-radius:999px; cursor:pointer; user-select:none; color:#cfe1f2}
+    [data-theme="light"] .pill{border-color:#cbd5e1; color:#0b0f14}
+    .pill.active{background:var(--acc); color:#081018; border-color:var(--acc)}
+    .btn{border:1px solid #223042; background:#0f1520; color:#cfe1f2; padding:10px 14px; border-radius:10px; cursor:pointer}
+    [data-theme="light"] .btn{ background:#f1f5f9; color:#0b0f14; border-color:#cbd5e1 }
+    .btn.primary{background:var(--acc); color:#07121f; border:0}
+    .btn.ok{background:var(--ok); color:#062013; border:0}
+    .btn.warn{background:var(--warn); color:#1d1302; border:0}
+    .btn.ghost{background:transparent}
+    .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px}
+    .reward{border:1px solid #223042; background:#0e141e; border-radius:12px; padding:10px; cursor:pointer; text-align:left; color:#ffffff;}
+    .reward:hover{border-color:#2f4058}
+    [data-theme="light"] .reward{ background:#f8fafc; border-color:#e2e8f0; color:#0b0f14; }
+    [data-theme="light"] .reward:hover{ border-color:#94a3b8 }
+    .muted{color:var(--muted)}
+    .log{max-height:220px; overflow:auto; border:1px dashed #223042; border-radius:12px; padding:8px}
+    .kpis{display:flex; gap:12px; flex-wrap:wrap}
+    .kpi{background:#0d1320; border:1px solid #1f2937; border-radius:12px; padding:10px 12px}
+    [data-theme="light"] .kpi{ background:#ffffff; border-color:#e2e8f0 }
+    .kpi b{font-size:20px}
+    .footer{opacity:.7; font-size:12px; margin-top:12px}
+
+    dialog{border:0; border-radius:16px; background:#0e1624; color:var(--text); padding:0; width:min(720px,96vw)}
+    [data-theme="light"] dialog{ background:#ffffff; color:#0b0f14 }
+    dialog::backdrop{background:rgba(0,0,0,.6)}
+    .modal-head{padding:14px 16px; border-bottom:1px solid #1f2a3a; display:flex; justify-content:space-between; align-items:center}
+    [data-theme="light"] .modal-head{ border-bottom-color:#e2e8f0 }
+    .modal-body{padding:14px 16px}
+    .mini{font-size:12px; opacity:.8}
+
+    /* === Block Tower === */
+    .tower-wrap{margin-top:8px}
+    .houses{display:flex; gap:8px; align-items:center; margin-bottom:8px}
+    .house{font-size:24px}
+    .tower-grid{display:grid; grid-template-columns:repeat(10, 14px); gap:3px; width:max-content; background:transparent; padding:4px; border-radius:8px}
+    .cell{width:14px; height:14px; background:var(--acc); border-radius:3px; opacity:.9}
+    .cell.empty{background:#223042; opacity:.5}
+    [data-theme="light"] .cell.empty{background:#e2e8f0}
+
+    /* === Quotes Banner === */
+    .motto{display:flex; gap:8px; align-items:center; margin-top:2px; color:var(--muted)}
+    .motto .dot{width:8px; height:8px; border-radius:999px; background:var(--acc); opacity:.8}
+    .motto .text{transition:opacity .4s ease, transform .4s ease; will-change:opacity, transform}
+    .motto.fade-out{opacity:0; transform:translateY(-6px)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+        <div>
+          <h1 style="margin:0">30분 블럭 보상 선택기</h1>
+          <div class="motto" aria-live="polite"><span class="dot"></span><span id="mottoText" class="text"></span></div>
+        </div>
+        <button class="btn" id="themeToggle" title="테마 전환">🌓</button>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <div class="timer" id="timer">30:00</div>
+        <div class="row">
+          <span class="pill" data-min="5">5분</span>
+          <span class="pill" data-min="10">10분</span>
+          <span class="pill" data-min="15">15분</span>
+          <span class="pill" data-min="20">20분</span>
+          <span class="pill active" data-min="30">30분</span>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="startBtn">시작</button>
+        <button class="btn" id="pauseBtn">일시정지</button>
+        <button class="btn warn" id="resetBtn">리셋</button>
+        <button class="btn" id="doneBtn">완료 처리</button>
+      </div>
+      <div class="kpis" style="margin-top:14px">
+        <div class="kpi">오늘 블럭 <b id="kToday">0</b></div>
+        <div class="kpi">연속 일수 <b id="kStreak">0</b></div>
+        <div class="kpi">누적 블럭 <b id="kTotal">0</b></div>
+      </div>
+
+      <div class="tower-wrap">
+        <h2>블럭 타워</h2>
+        <div class="houses" id="houses"></div>
+        <div class="tower-grid" id="blockTower" aria-label="누적 블럭 시각화 (최대 100)"></div>
+        <div class="mini muted" id="towerHint"></div>
+      </div>
+
+      <h2>보상 빠른 선택</h2>
+      <div class="row" style="gap:8px; align-items:center; justify-content:space-between">
+        <div class="row" style="gap:8px">
+          <button class="btn" id="addReward">보상 추가</button>
+          <button class="btn" id="toggleEdit">보상 편집</button>
+          <button class="btn ok" id="randomReward">랜덤 보상</button>
+        </div>
+      </div>
+      <div class="grid" id="rewardGrid"></div>
+      <h2>설정</h2>
+      <div class="row" style="gap:18px; align-items:center">
+        <label><input type="checkbox" id="optSound" checked> 알람 소리</label>
+        <label><input type="checkbox" id="optVibrate"> 진동</label>
+        <label><input type="checkbox" id="optAutoModal" checked> 보상창 자동 표시</label>
+        <button class="btn warn" id="clearAll">전체 기록 초기화</button>
+      </div>
+      <h2>히스토리</h2>
+      <div class="row" style="gap:8px; margin-bottom:6px">
+        <button class="btn" id="undoLast">마지막 항목 취소</button>
+      </div>
+      <div class="log" id="history"></div>
+      <div class="footer">로컬 저장소만 사용. 계정/서버 없이 브라우저에서 즉시 동작.</div>
+    </div>
+  </div>
+  <dialog id="rewardModal">
+    <div class="modal-head">
+      <div>블럭 완료! 보상을 골라주세요</div>
+      <button class="btn" onclick="rewardModal.close()">닫기</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid" id="modalRewards"></div>
+      <div class="row" style="margin-top:12px; justify-content:space-between">
+        <div class="mini muted">보상 후 5분 타이머</div>
+        <button class="btn ok" id="startRewardTimer">보상 5분 타이머 시작</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="timer" id="rewardTimer">05:00</div>
+        <button class="btn warn" id="stopRewardTimer">보상 타이머 정지</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 보상 추가 모달 -->
+  <dialog id="addRewardDlg">
+    <div class="modal-head">
+      <div>보상 추가</div>
+      <button class="btn" id="arClose">닫기</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label class="mini muted">보상 이름</label><input id="arLabel" class="input" placeholder="예: 다크 초콜릿 한 조각" /></div>
+      <div class="field"><label class="mini muted">태그(선택)</label><input id="arTag" class="input" placeholder="예: 간식" /></div>
+      <div class="row" style="justify-content:flex-end; margin-top:8px">
+        <button class="btn" id="arCancel">취소</button>
+        <button class="btn ok" id="arSave">추가</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 초기화 확인 모달 -->
+  <dialog id="confirmResetDlg">
+    <div class="modal-head"><div>전체 기록 초기화</div></div>
+    <div class="modal-body">
+      <div class="mini" style="margin-bottom:10px">모든 기록과 카운터가 삭제됩니다. 계속하시겠습니까?</div>
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn" id="crNo">취소</button>
+        <button class="btn warn" id="crYes">초기화</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    const $=s=>document.querySelector(s);
+    const $$=s=>Array.from(document.querySelectorAll(s));
+    const timerEl=$('#timer');
+    const rewardGrid=$('#rewardGrid');
+    const historyEl=$('#history');
+    const rewardModal=$('#rewardModal');
+    const modalRewards=$('#modalRewards');
+    const rewardTimerEl=$('#rewardTimer');
+
+    const DEFAULT_REWARDS=[{label:'좋아하는 음악 1곡 듣기',tag:'감각'},{label:'좋아하는 영상클립(5분 이하) 1개',tag:'감각'},{label:'코드컴뱃 한 단계 클리어',tag:'성취'},{label:'아내와 짧은 대화(5분)',tag:'정서'},{label:'다크 초콜릿 한 조각',tag:'간식'},{label:'VR 탁구 한판',tag:'활동'},{label:'코인 가격 보기(5분 제한)',tag:'가벼움'},{label:'차 한 잔(허브티/녹차)',tag:'감각'},{label:'인터넷 검색 5분(스포츠/커뮤니티)',tag:'가벼움'},{label:'성경 1장 읽기',tag:'의미'},{label:'생각 노트 1줄 쓰기',tag:'성찰'}];
+    let rewards=loadRewards();
+    let editMode=false;
+
+    let state=loadState();
+    let settings=loadSettings();
+    let duration=30*60; let remain=duration; let tHandle=null; let rHandle=null;
+
+    function renderTimer(){timerEl.textContent=fmt(remain);} 
+    function fmt(sec){const m=String(Math.floor(sec/60)).padStart(2,'0'); const s=String(sec%60).padStart(2,'0'); return `${m}:${s}`;}
+
+    function start(){if(tHandle) return; tHandle=setInterval(tick,1000);} 
+    function pause(){if(tHandle){clearInterval(tHandle); tHandle=null;}}
+    function reset(){pause(); remain=duration; renderTimer();}
+    function tick(){remain=Math.max(0,remain-1); renderTimer(); if(remain===0){pause(); onBlockComplete('타이머 완료');}}
+
+    function onBlockComplete(reason){
+      if(settings.sound) beep(2);
+      if(settings.vibrate&&'vibrate' in navigator) navigator.vibrate([120,60,120]);
+      state.history.unshift({ts:new Date().toISOString(), note:`블럭 완료 (${reason})`});
+      recalcFromHistory(); saveState(); renderKPIs(); renderHistory(); renderBlockTower();
+      if(settings.autoModal) rewardModal.showModal();
+    }
+
+    function renderKPIs(){
+      $('#kToday').textContent=state.todayKey===todayKey()?state.todayCount:0;
+      $('#kStreak').textContent=state.streak||0;
+      $('#kTotal').textContent=state.totalBlocks||0;
+    }
+
+    function renderHistory(){
+      if(!state.history.length){historyEl.innerHTML='<span class="muted">아직 기록이 없습니다.</span>'; return;}
+      historyEl.innerHTML=state.history.map((h,i)=>`<div>• ${escapeHtml(fmtLocal(h.ts))} — ${escapeHtml(h.note)} <button class=\"btn ghost mini\" data-del=\"${i}\">삭제</button></div>`).join('');
+      $$('#history button[data-del]').forEach(btn=>{
+        btn.onclick=()=>{const idx=parseInt(btn.dataset.del,10); state.history.splice(idx,1); recalcFromHistory(); saveState(); renderKPIs(); renderHistory(); renderBlockTower();};
+      });
+    }
+
+    function renderRewards(){
+      rewardGrid.innerHTML=''; modalRewards.innerHTML='';
+      rewards.forEach((r,idx)=>{
+        const chip=document.createElement('button');
+        chip.type='button'; chip.className='reward';
+        chip.innerHTML=`<div>${escapeHtml(r.label)}</div><div class=\"mini muted\">#${escapeHtml(r.tag||'보상')}</div>`;
+        chip.onclick=()=>{if(editMode) return; selectReward(r.label);};
+        rewardGrid.appendChild(chip);
+        const chip2=chip.cloneNode(true); chip2.onclick=()=>selectReward(r.label); modalRewards.appendChild(chip2);
+        if(editMode){
+          const del=document.createElement('button'); del.type='button'; del.className='btn ghost mini'; del.textContent='삭제'; del.style.position='absolute'; del.style.top='6px'; del.style.right='6px';
+          del.onclick=e=>{e.stopPropagation(); rewards.splice(idx,1); saveRewards(); renderRewards();};
+          chip.style.position='relative'; chip.appendChild(del);
+        }
+      });
+    }
+
+    function selectReward(label){
+      state.history.unshift({ts:new Date().toISOString(), note:`보상 선택: ${label}`});
+      saveState(); renderHistory();
+      rewardModal.close();
+    }
+
+    function startRewardTimer(){if(rHandle) return; let r=5*60; rewardTimerEl.textContent=fmt(r); rHandle=setInterval(()=>{r=Math.max(0,r-1); rewardTimerEl.textContent=fmt(r); if(r===0){clearInterval(rHandle); rHandle=null; if(settings.sound) beep(1); if(settings.vibrate&&'vibrate' in navigator) navigator.vibrate(120);}},1000);} 
+    function stopRewardTimer(){if(rHandle){clearInterval(rHandle); rHandle=null;} rewardTimerEl.textContent='05:00';}
+
+    // ====== 보상 추가 모달 ======
+    const addDlg=$('#addRewardDlg');
+    $('#addReward').onclick=()=>{ $('#arLabel').value=''; $('#arTag').value=''; addDlg.showModal(); setTimeout(()=>$('#arLabel').focus(),0); };
+    $('#arClose').onclick=()=>addDlg.close();
+    $('#arCancel').onclick=()=>addDlg.close();
+    $('#arSave').onclick=()=>{ const label=$('#arLabel').value.trim(); if(!label){ $('#arLabel').focus(); return; } const tag=$('#arTag').value.trim(); rewards.push({label, tag}); saveRewards(); renderRewards(); addDlg.close(); };
+    $('#arLabel').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#arSave').click(); }});
+    $('#arTag').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#arSave').click(); }});
+
+    // ====== 초기화 확인 모달 ======
+    const resetDlg=$('#confirmResetDlg');
+    $('#clearAll').onclick=()=> resetDlg.showModal();
+    $('#crNo').onclick=()=> resetDlg.close();
+    $('#crYes').onclick=()=>{ state=initialState(); saveState(); renderKPIs(); renderHistory(); renderBlockTower(); resetDlg.close(); };
+
+    function todayKey(){return new Date().toISOString().slice(0,10);} 
+    function initialState(){ return {todayKey:todayKey(),todayCount:0,streak:0,totalBlocks:0,lastDay:null,history:[]}; }
+
+    function loadState(){try{return JSON.parse(localStorage.getItem('block-reward-lite'))||initialState();}catch(e){return initialState();}}
+    function saveState(){localStorage.setItem('block-reward-lite',JSON.stringify(state));}
+    function loadSettings(){try{return Object.assign({sound:true,vibrate:false,autoModal:true},JSON.parse(localStorage.getItem('block-reward-lite-settings')||'{}'));}catch(e){return{sound:true,vibrate:false,autoModal:true};}}
+    function saveSettings(){localStorage.setItem('block-reward-lite-settings',JSON.stringify(settings));}
+    function loadRewards(){try{const v=JSON.parse(localStorage.getItem('block-reward-lite-rewards')); return Array.isArray(v)&&v.length? v: DEFAULT_REWARDS.slice();}catch(e){return DEFAULT_REWARDS.slice();}}
+    function saveRewards(){localStorage.setItem('block-reward-lite-rewards',JSON.stringify(rewards));}
+
+    function recalcFromHistory(){
+      const dates=new Set(); let todayCount=0; const today=todayKey(); let total=0; let latest=null;
+      state.history.forEach(h=>{
+        if(!/^블럭 완료 \(/.test(h.note)) return; // 보상 선택 로그는 제외
+        total++;
+        const d=(h.ts||'').slice(0,10);
+        if(d){ dates.add(d); if(d===today) todayCount++; if(!latest||d>latest) latest=d; }
+      });
+      state.totalBlocks=total; state.todayKey=today; state.todayCount=todayCount; state.lastDay=latest; state.streak=computeStreak(dates, latest);
+    }
+
+    function computeStreak(dates, latest){if(!latest) return 0; let s=0; let cur=new Date(latest); while(true){const k=cur.toISOString().slice(0,10); if(dates.has(k)){s++; cur.setDate(cur.getDate()-1);} else break; } return s;}
+    function fmtLocal(iso){try{return new Date(iso).toLocaleString();}catch(e){return iso;}}
+    function escapeHtml(s){return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));}
+
+    // 체크박스 초기값 및 핸들러
+    $('#optSound').checked=settings.sound; $('#optVibrate').checked=settings.vibrate; $('#optAutoModal').checked=settings.autoModal;
+    $('#optSound').onchange=()=>{settings.sound=$('#optSound').checked; saveSettings();};
+    $('#optVibrate').onchange=()=>{settings.vibrate=$('#optVibrate').checked; saveSettings();};
+    $('#optAutoModal').onchange=()=>{settings.autoModal=$('#optAutoModal').checked; saveSettings();};
+
+    // 테마 토글
+    (function(){const root=document.documentElement; const key='block-reward-lite-theme'; const saved=localStorage.getItem(key); if(saved==='light'||saved==='dark') root.setAttribute('data-theme', saved); $('#themeToggle').addEventListener('click', ()=>{const cur=root.getAttribute('data-theme'); const next=cur==='light'?'dark':cur==='dark'?null:'light'; if(next){root.setAttribute('data-theme', next); localStorage.setItem(key,next);} else {root.removeAttribute('data-theme'); localStorage.removeItem(key);} });})();
+
+    // 비프음
+    function beep(times=1){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); let t=ctx.currentTime; for(let i=0;i<times;i++){ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=i%2?660:880; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(0.001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02); o.start(t); o.stop(t+0.2); t+=0.3; } setTimeout(()=>ctx.close(),times*400); }catch(e){} }
+
+    // === Block Tower 렌더 ===
+    function renderBlockTower(){
+      const tower=$('#blockTower'); const housesEl=$('#houses'); const hint=$('#towerHint');
+      const blocks=state.totalBlocks||0; const houses=Math.floor(blocks/100); const rem=blocks%100;
+
+      housesEl.innerHTML = houses? Array.from({length:houses}).map(()=>'<span class="house" title="100 블럭 달성!">🏠</span>').join('') : '<span class="mini muted">아직 집이 없습니다 (100블럭마다 🏠)</span>';
+
+      let cells='';
+      for(let i=0;i<100;i++){
+        const filled = i < rem;
+        cells += `<div class="cell${filled?'':' empty'}"></div>`;
+      }
+      tower.innerHTML=cells;
+      hint.textContent = `누적 ${blocks} 블럭 · 집 ${houses}개 · 다음 집까지 ${100-rem} 블럭`;
+    }
+
+    // === Quotes (5초 순환) ===
+    const QUOTES = [
+      '늦게나마 배우는 것이 배우지 않는 것 보다 낫다.',
+      '산을 옮기는 사람은 작은 돌멩이부터 옮긴다.',
+      '천리길도 한 걸음부터',
+      '걷지도 못하면서 뛰려고 한다.',
+      '가장 높은 곳에 오르려거든, 가장 낮은 곳에서 시작하라.',
+      '작은 물방울이 모이면 바위를 뚫는다.',
+      '단 10분이라도 의미가 있다.',
+      '하루 1시간이라도 일주일이면 7시간, 1년이면 365시간, 10년이면 3650시간이다.',
+      '나는 내 사정과 싸우고 있고, 나는 남들과 다른 산을 오르고 있다.',
+      '나는 내 속도로, 내 방향으로, 오늘 멈추지 않고 걷고 있다.'
+    ];
+    (function rotateQuotes(){
+      const el = document.getElementById('mottoText');
+      if(!el) return;
+      let idx = parseInt(localStorage.getItem('br-quote-index')||'0',10) || 0;
+      const show = ()=>{
+        const wrap = el.closest('.motto');
+        if(wrap) wrap.classList.add('fade-out');
+        setTimeout(()=>{
+          el.textContent = QUOTES[idx % QUOTES.length];
+          idx = (idx+1) % QUOTES.length;
+          localStorage.setItem('br-quote-index', String(idx));
+          if(wrap) wrap.classList.remove('fade-out');
+        }, 380);
+      };
+      show();
+      setInterval(show, 5000);
+    })();
+
+    // 이벤트 바인딩
+    $('#startBtn').onclick=start; $('#pauseBtn').onclick=pause; $('#resetBtn').onclick=reset; $('#doneBtn').onclick=()=>{ pause(); onBlockComplete('수동 완료'); };
+    $('#startRewardTimer').onclick=startRewardTimer; $('#stopRewardTimer').onclick=stopRewardTimer;
+    $$('.pill').forEach(p=>{ p.onclick=()=>{ $$('.pill').forEach(x=>x.classList.remove('active')); p.classList.add('active'); duration=parseInt(p.dataset.min,10)*60; remain=duration; renderTimer(); }; });
+    $('#toggleEdit').onclick=()=>{ editMode=!editMode; renderRewards(); };
+    $('#randomReward').onclick=()=>{ if(!rewards.length) return; const pick=rewards[Math.floor(Math.random()*rewards.length)]; selectReward(pick.label); };
+    $('#undoLast').onclick=()=>{ if(state.history.length){ state.history.shift(); recalcFromHistory(); saveState(); renderKPIs(); renderHistory(); renderBlockTower(); } };
+
+    // 초기 렌더
+    renderTimer(); renderKPIs(); renderRewards(); renderHistory(); renderBlockTower();
+  </script>
+</body>
+</html>
