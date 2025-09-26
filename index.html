@@ -6,7 +6,12 @@
   <title>30분 블럭 보상 선택기 (라이트) — FIX v3 + BlockTower + Quotes</title>
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f14">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f9fc">
+  <!-- PWA manifest & iOS icons -->
   <link rel="manifest" id="__manifest" href="#">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="블럭보상">
+  <link rel="apple-touch-icon" id="__appleIcon" href="#">
   <style>
     :root{ --bg:#0b0f14; --panel:#121821; --muted:#8aa0b2; --text:#e6edf3; --acc:#6ea8fe; --ok:#36d399; --warn:#fbbc04; --danger:#ef4444; }
     [data-theme="light"]{ --bg:#f7f9fc; --panel:#ffffff; --muted:#4b5563; --text:#0b0f14; --acc:#2f6aea; --ok:#16a34a; --warn:#c08a00; --danger:#b91c1c; }
@@ -357,6 +362,41 @@
 
     // 초기 렌더
     renderTimer(); renderKPIs(); renderRewards(); renderHistory(); renderBlockTower();
+  </script>
+  <script>
+    // === Runtime Manifest & Icons (block-style) ===
+    (function(){
+      // simple block icon (SVG) in dark and light
+      const svg = color => `<?xml version='1.0' encoding='UTF-8'?>
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>
+  <rect width='512' height='512' rx='96' fill='${color.bg}'/>
+  <rect x='96' y='96' width='320' height='320' rx='36' fill='${color.block}'/>
+</svg>`;
+      const dark = {bg:'#0b0f14', block:'#6ea8fe'};
+      const light = {bg:'#ffffff', block:'#2f6aea'};
+      const toDataUrl = s => 'data:image/svg+xml;utf8,' + encodeURIComponent(s);
+
+      const icons = [
+        { src: toDataUrl(svg(dark)), sizes:'192x192', type:'image/svg+xml', purpose:'any maskable' },
+        { src: toDataUrl(svg(dark)), sizes:'512x512', type:'image/svg+xml', purpose:'any maskable' }
+      ];
+      const manifest = {
+        name: '30분 블럭 보상 선택기',
+        short_name: '블럭보상',
+        start_url: './',
+        scope: './',
+        display: 'standalone',
+        background_color: '#0b0f14',
+        theme_color: '#0b0f14',
+        icons
+      };
+      const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      document.getElementById('__manifest').setAttribute('href', url);
+      // iOS apple-touch-icon uses a separate link (light BG so it looks good on springboard)
+      const appleUrl = toDataUrl(svg(light));
+      document.getElementById('__appleIcon').setAttribute('href', appleUrl);
+    })();
   </script>
 </body>
 </html>
