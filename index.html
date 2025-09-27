@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>30분 블럭 보상 선택기 (라이트) — FIX v3 + BlockTower + Quotes</title>
+  <title>30분 블럭 보상 선택기 (라이트) — FIX v4 + BlockTower + Quotes</title>
 
   <!-- PWA & 모바일 앱 설정 -->
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f14">
@@ -26,7 +26,7 @@
     :root{ --bg:#0b0f14; --panel:#121821; --muted:#8aa0b2; --text:#e6edf3; --acc:#6ea8fe; --ok:#36d399; --warn:#fbbc04; --danger:#ef4444; }
     [data-theme="light"]{ --bg:#f7f9fc; --panel:#ffffff; --muted:#4b5563; --text:#0b0f14; --acc:#2f6aea; --ok:#16a34a; --warn:#c08a00; --danger:#b91c1c; }
     *{box-sizing:border-box}
-    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--text);}
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--text);}    
     .wrap{max-width:880px; margin:20px auto; padding:16px}
     .card{background:var(--panel); border:1px solid #1f2937; border-radius:16px; padding:16px; box-shadow:0 6px 20px rgba(0,0,0,.25)}
     h1{font-size:22px; margin:0 0 6px}
@@ -105,6 +105,7 @@
         <button class="btn" id="pauseBtn">일시정지</button>
         <button class="btn warn" id="resetBtn">리셋</button>
         <button class="btn" id="doneBtn">완료 처리</button>
+        <button class="btn" id="wakeLockBtn" title="화면 꺼짐 방지">화면유지</button>
       </div>
       <div class="kpis" style="margin-top:14px">
         <div class="kpi">오늘 블럭 <b id="kToday">0</b></div>
@@ -144,7 +145,7 @@
     </div>
   </div>
 
-  <!-- 알람 오디오 -->
+  <!-- 알람 오디오 (소리 필요 없어도 호환 유지) -->
   <audio id="alarmAudio" preload="auto" src="./alarm.mp3"></audio>
 
   <dialog id="rewardModal">
@@ -210,14 +211,34 @@
     let state=loadState();
     let settings=loadSettings();
     let duration=30*60; let remain=duration; let tHandle=null; let rHandle=null;
+    let targetEnd=null; // deadline 기반 타이머 목표 시각
 
     function renderTimer(){timerEl.textContent=fmt(remain);} 
     function fmt(sec){const m=String(Math.floor(sec/60)).padStart(2,'0'); const s=String(sec%60).padStart(2,'0'); return `${m}:${s}`;}
 
-    function start(){if(tHandle) return; tHandle=setInterval(tick,1000);} 
-    function pause(){if(tHandle){clearInterval(tHandle); tHandle=null;}}
-    function reset(){pause(); remain=duration; renderTimer();}
-    function tick(){remain=Math.max(0,remain-1); renderTimer(); if(remain===0){pause(); onBlockComplete('타이머 완료');}}
+    function start(){
+      if(tHandle) return;
+      if(!targetEnd) targetEnd = Date.now() + remain * 1000;
+      tHandle = setInterval(tick, 250);
+    } 
+    function pause(){
+      if(tHandle){clearInterval(tHandle); tHandle=null;}
+      if(targetEnd){
+        remain = Math.max(0, Math.ceil((targetEnd - Date.now())/1000));
+        targetEnd = null;
+      }
+      renderTimer();
+    }
+    function reset(){ pause(); remain=duration; targetEnd=null; renderTimer(); }
+    function tick(){
+      if(!targetEnd){ pause(); return; }
+      remain = Math.max(0, Math.ceil((targetEnd - Date.now())/1000));
+      renderTimer();
+      if(remain===0){
+        clearInterval(tHandle); tHandle=null; targetEnd=null;
+        onBlockComplete('타이머 완료');
+      }
+    }
 
     function onBlockComplete(reason){
       if(settings.sound) playAlarm(2);
@@ -235,7 +256,7 @@
 
     function renderHistory(){
       if(!state.history.length){historyEl.innerHTML='<span class="muted">아직 기록이 없습니다.</span>'; return;}
-      historyEl.innerHTML=state.history.map((h,i)=>`<div>• ${escapeHtml(fmtLocal(h.ts))} — ${escapeHtml(h.note)} <button class=\"btn ghost mini\" data-del=\"${i}\">삭제</button></div>`).join('');
+      historyEl.innerHTML=state.history.map((h,i)=>`<div>• ${escapeHtml(fmtLocal(h.ts))} — ${escapeHtml(h.note)} <button class="btn ghost mini" data-del="${i}">삭제</button></div>`).join('');
       $$('#history button[data-del]').forEach(btn=>{
         btn.onclick=()=>{const idx=parseInt(btn.dataset.del,10); state.history.splice(idx,1); recalcFromHistory(); saveState(); renderKPIs(); renderHistory(); renderBlockTower();};
       });
@@ -246,7 +267,7 @@
       rewards.forEach((r,idx)=>{
         const chip=document.createElement('button');
         chip.type='button'; chip.className='reward';
-        chip.innerHTML=`<div>${escapeHtml(r.label)}</div><div class=\"mini muted\">#${escapeHtml(r.tag||'보상')}</div>`;
+        chip.innerHTML=`<div>${escapeHtml(r.label)}</div><div class="mini muted">#${escapeHtml(r.tag||'보상')}</div>`;
         chip.onclick=()=>{if(editMode) return; selectReward(r.label);};
         rewardGrid.appendChild(chip);
         const chip2=chip.cloneNode(true); chip2.onclick=()=>selectReward(r.label); modalRewards.appendChild(chip2);
@@ -264,8 +285,11 @@
       rewardModal.close();
     }
 
-    function startRewardTimer(){if(rHandle) return; let r=5*60; rewardTimerEl.textContent=fmt(r); rHandle=setInterval(()=>{r=Math.max(0,r-1); rewardTimerEl.textContent=fmt(r); if(r===0){clearInterval(rHandle); rHandle=null; if(settings.sound) playAlarm(1); if(settings.vibrate&&'vibrate' in navigator) navigator.vibrate(120);}},1000);} 
-    function stopRewardTimer(){if(rHandle){clearInterval(rHandle); rHandle=null;} rewardTimerEl.textContent='05:00';}
+    function startRewardTimer(){
+      if(rHandle) return; let r=5*60; rewardTimerEl.textContent=fmt(r);
+      rHandle=setInterval(()=>{r=Math.max(0,r-1); rewardTimerEl.textContent=fmt(r); if(r===0){clearInterval(rHandle); rHandle=null; if(settings.sound) playAlarm(1); if(settings.vibrate&&'vibrate' in navigator) navigator.vibrate(120);}},1000);
+    } 
+    function stopRewardTimer(){ if(rHandle){clearInterval(rHandle); rHandle=null;} rewardTimerEl.textContent='05:00'; }
 
     // ====== 보상 추가 모달 ======
     const addDlg=$('#addRewardDlg');
@@ -330,7 +354,6 @@
         once(); if(times>1){ const id=setInterval(()=>{ once(); if(++count>=times-1) clearInterval(id); },600); }
         return;
       }
-      // fallback: WebAudio beep (requires unlockAudio executed earlier)
       try{
         if(!audioCtx) return; let t=audioCtx.currentTime; for(let i=0;i<times;i++){ const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=i%2?660:880; o.connect(g); g.connect(audioCtx.destination); g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.25,t+0.02); o.start(t); o.stop(t+0.22); t+=0.32; }
       }catch(e){}
@@ -360,7 +383,7 @@
       '걷지도 못하면서 뛰려고 한다.',
       '가장 높은 곳에 오르려거든, 가장 낮은 곳에서 시작하라.',
       '작은 물방울이 모이면 바위를 뚫는다.',
-      '단 10분이라도 의미가 있다. 5분만 하자',
+      '단 10분이라도 의미가 있다.',
       '하루 1시간이라도 일주일이면 7시간, 1년이면 365시간, 10년이면 3650시간이다.',
       '나는 내 사정과 싸우고 있고, 나는 남들과 다른 산을 오르고 있다.',
       '나는 내 속도로, 내 방향으로, 오늘 멈추지 않고 걷고 있다.'
@@ -383,11 +406,51 @@
       setInterval(show, 5000);
     })();
 
+    // === Wake Lock (화면유지) ===
+    let wakeLock = null;
+    async function requestWakeLock(){
+      try{
+        if('wakeLock' in navigator && !wakeLock){
+          wakeLock = await navigator.wakeLock.request('screen');
+          $('#wakeLockBtn').textContent = '화면유지 ON';
+          wakeLock.addEventListener('release', ()=>{ $('#wakeLockBtn').textContent='화면유지'; wakeLock=null; });
+        } else if(!('wakeLock' in navigator)){
+          alert('이 브라우저는 화면유지를 지원하지 않습니다.');
+        }
+      }catch(e){
+        console.warn('WakeLock 실패', e);
+        alert('화면유지를 사용할 수 없습니다.');
+      }
+    }
+    function releaseWakeLock(){ try{ if(wakeLock){ wakeLock.release(); wakeLock=null; $('#wakeLockBtn').textContent='화면유지'; } }catch(_){} }
+    $('#wakeLockBtn').onclick=()=>{ if(wakeLock) releaseWakeLock(); else requestWakeLock(); };
+
+    // 탭 재진입 시 타이머/웨이크락 보정
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.hidden) return;
+      if(targetEnd){
+        remain = Math.max(0, Math.ceil((targetEnd - Date.now())/1000));
+        renderTimer();
+        if(remain === 0){
+          if(tHandle){ clearInterval(tHandle); tHandle = null; }
+          targetEnd = null;
+          onBlockComplete('백그라운드 경과로 자동 완료');
+        }
+      }
+      if(wakeLock){ requestWakeLock().catch(()=>{}); }
+    });
+    window.addEventListener('pageshow', ()=>{
+      if(targetEnd){ remain = Math.max(0, Math.ceil((targetEnd - Date.now())/1000)); renderTimer(); }
+    });
+
     // 이벤트 바인딩
     const bindAndUnlock=(el,handler)=>{ el.onclick=(e)=>{ unlockAudio(); handler(e); }; };
     bindAndUnlock($('#startBtn'), start); bindAndUnlock($('#pauseBtn'), pause); bindAndUnlock($('#resetBtn'), reset); bindAndUnlock($('#doneBtn'), ()=>{ pause(); onBlockComplete('수동 완료'); });
     $('#startRewardTimer').onclick=()=>{ unlockAudio(); startRewardTimer(); }; $('#stopRewardTimer').onclick=()=>{ unlockAudio(); stopRewardTimer(); };
-    $$('.pill').forEach(p=>{ p.onclick=()=>{ unlockAudio(); $$('.pill').forEach(x=>x.classList.remove('active')); p.classList.add('active'); duration=parseInt(p.dataset.min,10)*60; remain=duration; renderTimer(); }; });
+
+    // 분 선택
+    $$('.pill').forEach(p=>{ p.onclick=()=>{ unlockAudio(); $$('.pill').forEach(x=>x.classList.remove('active')); p.classList.add('active'); const newDur=parseInt(p.dataset.min,10)*60; if(tHandle && targetEnd){ const nowRemain=Math.max(0, Math.ceil((targetEnd - Date.now())/1000)); duration=newDur; targetEnd=Date.now()+duration*1000; remain=duration; renderTimer(); } else { duration=newDur; remain=duration; targetEnd=null; renderTimer(); } }; });
+
     $('#toggleEdit').onclick=()=>{ unlockAudio(); editMode=!editMode; renderRewards(); };
     $('#randomReward').onclick=()=>{ unlockAudio(); if(!rewards.length) return; const pick=rewards[Math.floor(Math.random()*rewards.length)]; selectReward(pick.label); };
     $('#undoLast').onclick=()=>{ unlockAudio(); if(state.history.length){ state.history.shift(); recalcFromHistory(); saveState(); renderKPIs(); renderHistory(); renderBlockTower(); } };
