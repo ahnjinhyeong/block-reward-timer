@@ -4,14 +4,23 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>30분 블럭 보상 선택기 (라이트) — FIX v3 + BlockTower + Quotes</title>
+
+  <!-- PWA & 모바일 앱 설정 -->
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f14">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f9fc">
-  <!-- PWA manifest & iOS icons -->
-  <link rel="manifest" id="__manifest" href="#">
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <!-- iOS 홈화면 지원 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="블럭보상">
-  <link rel="apple-touch-icon" id="__appleIcon" href="#">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <!-- 파비콘(PC 브라우저 탭 아이콘) -->
+  <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+  <link rel="icon" href="icon-512.png" sizes="512x512" type="image/png">
   <style>
     :root{ --bg:#0b0f14; --panel:#121821; --muted:#8aa0b2; --text:#e6edf3; --acc:#6ea8fe; --ok:#36d399; --warn:#fbbc04; --danger:#ef4444; }
     [data-theme="light"]{ --bg:#f7f9fc; --panel:#ffffff; --muted:#4b5563; --text:#0b0f14; --acc:#2f6aea; --ok:#16a34a; --warn:#c08a00; --danger:#b91c1c; }
@@ -133,6 +142,8 @@
       <div class="footer">로컬 저장소만 사용. 계정/서버 없이 브라우저에서 즉시 동작.</div>
     </div>
   </div>
+  <!-- 알람 오디오: alarm.mp3 파일을 리포지토리 루트에 업로드하세요 -->
+  <audio id="alarmAudio" preload="auto" src="alarm.mp3"></audio>
   <dialog id="rewardModal">
     <div class="modal-head">
       <div>블럭 완료! 보상을 골라주세요</div>
@@ -206,7 +217,7 @@
     function tick(){remain=Math.max(0,remain-1); renderTimer(); if(remain===0){pause(); onBlockComplete('타이머 완료');}}
 
     function onBlockComplete(reason){
-      if(settings.sound) beep(2);
+      if(settings.sound) playAlarm(2);
       if(settings.vibrate&&'vibrate' in navigator) navigator.vibrate([120,60,120]);
       state.history.unshift({ts:new Date().toISOString(), note:`블럭 완료 (${reason})`});
       recalcFromHistory(); saveState(); renderKPIs(); renderHistory(); renderBlockTower();
@@ -250,7 +261,7 @@
       rewardModal.close();
     }
 
-    function startRewardTimer(){if(rHandle) return; let r=5*60; rewardTimerEl.textContent=fmt(r); rHandle=setInterval(()=>{r=Math.max(0,r-1); rewardTimerEl.textContent=fmt(r); if(r===0){clearInterval(rHandle); rHandle=null; if(settings.sound) beep(1); if(settings.vibrate&&'vibrate' in navigator) navigator.vibrate(120);}},1000);} 
+    function startRewardTimer(){if(rHandle) return; let r=5*60; rewardTimerEl.textContent=fmt(r); rHandle=setInterval(()=>{r=Math.max(0,r-1); rewardTimerEl.textContent=fmt(r); if(r===0){clearInterval(rHandle); rHandle=null; if(settings.sound) playAlarm(1); if(settings.vibrate&&'vibrate' in navigator) navigator.vibrate(120);}},1000);} 
     function stopRewardTimer(){if(rHandle){clearInterval(rHandle); rHandle=null;} rewardTimerEl.textContent='05:00';}
 
     // ====== 보상 추가 모달 ======
@@ -300,10 +311,27 @@
     $('#optAutoModal').onchange=()=>{settings.autoModal=$('#optAutoModal').checked; saveSettings();};
 
     // 테마 토글
-    (function(){const root=document.documentElement; const key='block-reward-lite-theme'; const saved=localStorage.getItem(key); if(saved==='light'||saved==='dark') root.setAttribute('data-theme', saved); $('#themeToggle').addEventListener('click', ()=>{const cur=root.getAttribute('data-theme'); const next=cur==='light'?'dark':cur==='dark'?null:'light'; if(next){root.setAttribute('data-theme', next); localStorage.setItem(key,next);} else {root.removeAttribute('data-theme'); localStorage.removeItem(key);} });})();
+    (function(){const root=document.documentElement; const key='block-reward-lite-theme'; const saved=localStorage.getItem(key); if(saved==='light'||saved==='dark') root.setAttribute('data-theme', saved); $('#themeToggle').addEventListener('click', ()=>{unlockAudio(); const cur=root.getAttribute('data-theme'); const next=cur==='light'?'dark':cur==='dark'?null:'light'; if(next){root.setAttribute('data-theme', next); localStorage.setItem(key,next);} else {root.removeAttribute('data-theme'); localStorage.removeItem(key);} });})();
 
-    // 비프음
-    function beep(times=1){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); let t=ctx.currentTime; for(let i=0;i<times;i++){ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=i%2?660:880; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(0.001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02); o.start(t); o.stop(t+0.2); t+=0.3; } setTimeout(()=>ctx.close(),times*400); }catch(e){} }
+    // 오디오 언락 & 알람 재생 (iOS 대응)
+    let audioCtx=null; let audioUnlocked=false;
+    function unlockAudio(){
+      if(audioUnlocked) return; audioUnlocked=true;
+      try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); audioCtx.resume(); }catch(e){}
+      const a=$('#alarmAudio'); if(a){ a.volume=0.01; const p=a.play(); if(p&&p.then){ p.then(()=>{ a.pause(); a.currentTime=0; a.volume=1; }).catch(()=>{}); } }
+    }
+    function playAlarm(times=1){
+      const a=$('#alarmAudio');
+      if(a && a.src){
+        let count=0; const once=()=>{ try{ a.currentTime=0; a.play().catch(()=>{});}catch(_){}; };
+        once(); if(times>1){ const id=setInterval(()=>{ once(); if(++count>=times-1) clearInterval(id); },600); }
+        return;
+      }
+      // fallback: WebAudio beep (requires unlockAudio executed earlier)
+      try{
+        if(!audioCtx) return; let t=audioCtx.currentTime; for(let i=0;i<times;i++){ const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=i%2?660:880; o.connect(g); g.connect(audioCtx.destination); g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.25,t+0.02); o.start(t); o.stop(t+0.22); t+=0.32; }
+      }catch(e){}
+    }
 
     // === Block Tower 렌더 ===
     function renderBlockTower(){
@@ -353,12 +381,14 @@
     })();
 
     // 이벤트 바인딩
-    $('#startBtn').onclick=start; $('#pauseBtn').onclick=pause; $('#resetBtn').onclick=reset; $('#doneBtn').onclick=()=>{ pause(); onBlockComplete('수동 완료'); };
-    $('#startRewardTimer').onclick=startRewardTimer; $('#stopRewardTimer').onclick=stopRewardTimer;
-    $$('.pill').forEach(p=>{ p.onclick=()=>{ $$('.pill').forEach(x=>x.classList.remove('active')); p.classList.add('active'); duration=parseInt(p.dataset.min,10)*60; remain=duration; renderTimer(); }; });
-    $('#toggleEdit').onclick=()=>{ editMode=!editMode; renderRewards(); };
-    $('#randomReward').onclick=()=>{ if(!rewards.length) return; const pick=rewards[Math.floor(Math.random()*rewards.length)]; selectReward(pick.label); };
-    $('#undoLast').onclick=()=>{ if(state.history.length){ state.history.shift(); recalcFromHistory(); saveState(); renderKPIs(); renderHistory(); renderBlockTower(); } };
+    const bindAndUnlock=(el,handler)=>{ el.onclick=(e)=>{ unlockAudio(); handler(e); }; };
+    bindAndUnlock($('#startBtn'), start); bindAndUnlock($('#pauseBtn'), pause); bindAndUnlock($('#resetBtn'), reset); bindAndUnlock($('#doneBtn'), ()=>{ pause(); onBlockComplete('수동 완료'); });
+    $('#startRewardTimer').onclick=()=>{ unlockAudio(); startRewardTimer(); }; $('#stopRewardTimer').onclick=()=>{ unlockAudio(); stopRewardTimer(); };
+    $$('.pill').forEach(p=>{ p.onclick=()=>{ unlockAudio(); $$('.pill').forEach(x=>x.classList.remove('active')); p.classList.add('active'); duration=parseInt(p.dataset.min,10)*60; remain=duration; renderTimer(); }; });
+    $('#toggleEdit').onclick=()=>{ unlockAudio(); editMode=!editMode; renderRewards(); };
+    $('#randomReward').onclick=()=>{ unlockAudio(); if(!rewards.length) return; const pick=rewards[Math.floor(Math.random()*rewards.length)]; selectReward(pick.label); };
+    $('#undoLast').onclick=()=>{ unlockAudio(); if(state.history.length){ state.history.shift(); recalcFromHistory(); saveState(); renderKPIs(); renderHistory(); renderBlockTower(); } };
+    window.addEventListener('touchstart', unlockAudio, {once:true, passive:true});
 
     // 초기 렌더
     renderTimer(); renderKPIs(); renderRewards(); renderHistory(); renderBlockTower();
